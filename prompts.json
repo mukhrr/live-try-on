@@ -1,0 +1,7 @@
+[
+  {"name": "control", "prompt": "{person}, wearing the same clothes as in the original video, facing a front-facing webcam in a room, natural indoor lighting, realistic, sharp details"},
+  {"name": "red_denim", "prompt": "{person}, wearing a red denim jacket over a plain white t-shirt, facing a front-facing webcam in a room, natural indoor lighting, realistic, sharp details"},
+  {"name": "leather", "prompt": "{person}, wearing a black leather biker jacket with silver zippers, facing a front-facing webcam in a room, natural indoor lighting, realistic, sharp details"},
+  {"name": "suit", "prompt": "{person}, wearing a navy blue business suit with a white shirt and a dark tie, facing a front-facing webcam in a room, natural indoor lighting, realistic, sharp details"},
+  {"name": "raincoat", "prompt": "{person}, wearing a bright yellow hooded raincoat, facing a front-facing webcam in a room, natural indoor lighting, realistic, sharp details"}
+]

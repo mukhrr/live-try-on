@@ -1,0 +1,7 @@
+bench_out/
+*.mp4
+!docs/**/*.mp4
+__pycache__/
+.venv/
+.idea/
+.DS_Store
