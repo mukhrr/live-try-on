@@ -23,7 +23,8 @@ Flow: on any shop page the user selects a product on screen, and a mirror window
 - [x] Helios-Distilled benched on a Modal H100 and dropped (2026-09-25): best case 2.27s per 33-frame chunk vs a 1.38s live budget. Code removed; numbers in `docs/pivot-joyai.md`
 - [x] JoyAI-Video-Edit self-hosted on a Modal RTX PRO 6000 (`joyai_modal.py`, `modal serve joyai_modal.py`), 840x480 @ 24 FPS, their own web UI. Cold start ~25 min (compile), warm start ~1m40s with the compile cache on volume `joyai-compile-cache`. 39GB VRAM. Owner tried it live 2026-09-25: "looks good"
 - [x] Helios code, bench results and Modal volumes removed (2026-09-27)
-- [ ] **NEXT: Toshoyna Chrome extension** talking to the JoyAI server's websocket
+- [x] Toshoyna Chrome extension v0.1 (`extension/`, 2026-09-27): toolbar icon starts pick mode, click a product photo, a popup mirror window streams the webcam to JoyAI (MJPEG over its `/ws` protocol) with the photo as `ref_image`. Tested end to end in Chromium against `extension/dev/mock_joyai.py` (~400ms with a simulated 200ms chunk)
+- [ ] Real capture-to-display latency against JoyAI on Modal
 - [x] Phase 2 skeleton: `server/` (FastAPI + aiortc, pluggable `FrameProcessor`) and `web/` (Next.js webcam page with pixel-marker latency overlay). Tested on the Mac with headless Chrome and a fake camera: passthrough about 130ms capture-to-display on localhost, and `dummy` at 100ms/frame holds at about 250ms and drops frames instead of queueing
 - [ ] Measure the skeleton over the LAN (Mac browser to GPU box) before plugging in a model
 

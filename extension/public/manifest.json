@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Toshoyna",
+  "description": "Pick a product on any shop page and see yourself wearing it, live.",
+  "version": "0.1.0",
+  "action": { "default_title": "Toshoyna: pick a product to try on" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"]
+}
