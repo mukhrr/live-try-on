@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { Product } from "../types";
+import { DownlinkDecoder, UplinkEncoder } from "./codec";
 import { JoyAIClient, type Status } from "./joyai";
+import { PacedPlayer } from "./playback";
 import { drawMirroredFrame, FRAME_HEIGHT, FRAME_WIDTH, loadRefImage } from "./media";
 
 const DEFAULT_SERVER = import.meta.env.VITE_SERVER_URL ?? "https://mshakhriyorov8--live-try-on-joyai-serve-dev.modal.run";
 const DEFAULT_PROMPT = "Put the clothes from Image 1 on the model in the video";
 const SEND_FPS = 24;
 const LATENCY_WINDOW = 48;
+
+type NetStats = { rtt: number | null; upMbit: number; downMbit: number; fps: number };
 
 type Phase = { kind: "waking"; seconds: number } | { kind: "camera" } | { kind: "error"; message: string } | Status;
 
@@ -32,9 +36,9 @@ async function waitForServer(base: string, signal: AbortSignal, onTick: (s: numb
 
 export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const outRef = useRef<HTMLCanvasElement>(null);
   const clientRef = useRef<JoyAIClient | null>(null);
   const latencies = useRef<number[]>([]);
-  const outUrl = useRef<string | null>(null);
 
   const [server, setServer] = useState<string | null>(null);
   const [product, setProduct] = useState<Product | null>(null);
@@ -42,8 +46,10 @@ export default function App() {
   const [draftPrompt, setDraftPrompt] = useState(DEFAULT_PROMPT);
   const [phase, setPhase] = useState<Phase>({ kind: "waking", seconds: 0 });
   const [connected, setConnected] = useState(false);
-  const [output, setOutput] = useState<string | null>(null);
+  const [hasOutput, setHasOutput] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
+  const [net, setNet] = useState<NetStats | null>(null);
+  const shownFrames = useRef(0);
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
@@ -61,6 +67,7 @@ export default function App() {
     const abort = new AbortController();
     let stream: MediaStream | null = null;
     let timer: ReturnType<typeof setInterval> | undefined;
+    let closePlayer = () => {};
 
     (async () => {
       await waitForServer(server, abort.signal, (seconds) => setPhase({ kind: "waking", seconds }));
@@ -73,15 +80,29 @@ export default function App() {
       video.srcObject = stream;
       await video.play();
 
+      let encoder: UplinkEncoder | null = null;
+      let decoder: DownlinkDecoder | null = null;
+      const player = new PacedPlayer(outRef.current!.getContext("2d")!, (ms) => {
+        setHasOutput(true);
+        shownFrames.current += 1;
+        latencies.current.push(ms);
+        if (latencies.current.length > LATENCY_WINDOW) latencies.current.shift();
+      });
+      closePlayer = () => player.close();
+
       const client = new JoyAIClient(server.replace(/^http/, "ws") + "/ws", {
-        onStatus: setPhase,
-        onFrame: (jpeg, ms) => {
-          if (outUrl.current) URL.revokeObjectURL(outUrl.current);
-          outUrl.current = URL.createObjectURL(jpeg);
-          setOutput(outUrl.current);
-          latencies.current.push(ms);
-          if (latencies.current.length > LATENCY_WINDOW) latencies.current.shift();
+        onStatus: (status) => {
+          setPhase(status);
+          // Each server session starts a fresh H.264 stream in both directions.
+          encoder?.close();
+          decoder?.close();
+          encoder = decoder = null;
+          player.reset();
+          if (status.kind !== "live") return;
+          encoder = new UplinkEncoder(SEND_FPS, (data, t) => client.sendFrame(data, t));
+          decoder = new DownlinkDecoder((frame, meta) => void player.push(frame, meta.t_capture_ms));
         },
+        onFrame: (data, meta) => decoder?.decode(data, meta),
       });
       clientRef.current = client;
       setConnected(true);
@@ -90,23 +111,27 @@ export default function App() {
       canvas.width = FRAME_WIDTH;
       canvas.height = FRAME_HEIGHT;
       const ctx = canvas.getContext("2d")!;
-      let busy = false;
-      timer = setInterval(async () => {
-        if (busy || !client.canSendFrame) return;
-        busy = true;
+      timer = setInterval(() => {
+        if (!encoder || !client.canSendFrame) return;
         const t = Date.now();
         drawMirroredFrame(ctx, video);
-        const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.6));
-        if (blob) client.sendFrame(await blob.arrayBuffer(), t);
-        busy = false;
+        encoder.encode(canvas, t);
       }, 1000 / SEND_FPS);
     })().catch((e) => setPhase({ kind: "error", message: String(e) }));
 
-    const stats = setInterval(() => latencies.current.length && setLatency(median(latencies.current)), 500);
+    const stats = setInterval(() => {
+      if (latencies.current.length) setLatency(median(latencies.current));
+      const client = clientRef.current;
+      if (!client) return;
+      const { up, down } = client.takeTraffic();
+      setNet({ rtt: client.rttMs, upMbit: (up * 8) / 1e6, downMbit: (down * 8) / 1e6, fps: shownFrames.current });
+      shownFrames.current = 0;
+    }, 1000);
     return () => {
       abort.abort();
       clearInterval(timer);
       clearInterval(stats);
+      closePlayer();
       clientRef.current?.close();
       clientRef.current = null;
       setConnected(false);
@@ -130,9 +155,14 @@ export default function App() {
   return (
     <main className="flex h-screen flex-col bg-black font-sans text-white">
       <div className="relative flex-1 overflow-hidden">
-        {output ? (
-          <img src={output} alt="You, wearing the product" className="h-full w-full object-contain" />
-        ) : (
+        <canvas
+          ref={outRef}
+          width={FRAME_WIDTH}
+          height={FRAME_HEIGHT}
+          aria-label="You, wearing the product"
+          className={`h-full w-full object-contain ${hasOutput ? "" : "hidden"}`}
+        />
+        {!hasOutput && (
           <div className="flex h-full items-center justify-center p-6 text-center text-sm text-zinc-400">
             {statusText(phase, product)}
           </div>
@@ -147,9 +177,16 @@ export default function App() {
             className="absolute bottom-3 left-3 h-16 w-16 rounded-lg border border-white/30 bg-white object-contain"
           />
         )}
-        <div className="absolute right-3 top-3 flex items-center gap-2 rounded-full bg-black/60 px-3 py-1 font-mono text-xs">
-          <span className={`h-2 w-2 rounded-full ${phase.kind === "live" ? "bg-emerald-400" : "bg-amber-400"}`} />
-          {phase.kind === "live" && latency !== null ? `${Math.round(latency)} ms` : phase.kind}
+        <div className="absolute right-3 top-3 flex flex-col items-end gap-1 font-mono text-xs">
+          <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1">
+            <span className={`h-2 w-2 rounded-full ${phase.kind === "live" ? "bg-emerald-400" : "bg-amber-400"}`} />
+            {phase.kind === "live" && latency !== null ? `${Math.round(latency)} ms` : phase.kind}
+          </div>
+          {phase.kind === "live" && net && (
+            <div className="rounded bg-black/60 px-2 py-0.5 text-[10px] text-zinc-300">
+              ping {net.rtt ?? "–"} ms · ↑{net.upMbit.toFixed(1)} ↓{net.downMbit.toFixed(1)} Mbit/s · {net.fps} fps
+            </div>
+          )}
         </div>
       </div>
 

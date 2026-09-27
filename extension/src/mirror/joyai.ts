@@ -1,5 +1,7 @@
 // Client for JoyAI-Video-Edit's streaming server (deploy/xvideo/serving/serve_joyomni_streaming.py),
-// mirroring what its own static/index.html does, MJPEG in both directions.
+// mirroring what its own static/index.html does, with H.264 in both directions.
+
+import type { OutputMeta } from "./codec";
 
 export type Status =
   | { kind: "connecting" }
@@ -12,11 +14,14 @@ export type StartOptions = { prompt: string; refImage: string };
 
 type Handlers = {
   onStatus: (s: Status) => void;
-  onFrame: (jpeg: Blob, latencyMs: number) => void;
+  /** An encoded H.264 access unit; the caller decodes it. */
+  onFrame: (data: ArrayBuffer, meta: OutputMeta) => void;
 };
 
-// Same limit as the reference client: stop sending once this many frames are unacknowledged.
-const MAX_UNACKED_FRAMES = 32;
+// One chunk's worth. The reference client allows 32, but every queued frame is latency the user sees;
+// dropping at the source is better than queueing behind a slow uplink.
+const MAX_UNACKED_FRAMES = 8;
+const MAX_BUFFERED_BYTES = 256 * 1024;
 const SESSION_SCOPED = new Set(["started", "accepted", "chunk_start", "output_frame", "chunk_done"]);
 
 export class JoyAIClient {
@@ -29,8 +34,11 @@ export class JoyAIClient {
   private sent = 0;
   private framesIn = 0;
   private received = 0;
-  private pendingOutput: { t_capture_ms: number } | null = null;
+  private pendingOutput: OutputMeta | null = null;
   private pingTimer: ReturnType<typeof setInterval>;
+  private bytesUp = 0;
+  private bytesDown = 0;
+  rttMs: number | null = null;
 
   constructor(wsUrl: string, private handlers: Handlers) {
     handlers.onStatus({ kind: "connecting" });
@@ -52,14 +60,28 @@ export class JoyAIClient {
   }
 
   get canSendFrame() {
-    return this.live && this.ws.readyState === WebSocket.OPEN && this.sent - this.framesIn < MAX_UNACKED_FRAMES;
+    return (
+      this.live &&
+      this.ws.readyState === WebSocket.OPEN &&
+      this.ws.bufferedAmount < MAX_BUFFERED_BYTES &&
+      this.sent - this.framesIn < MAX_UNACKED_FRAMES
+    );
   }
 
-  sendFrame(jpeg: ArrayBuffer, tCaptureMs: number) {
-    if (!this.canSendFrame) return;
+  /** Encoded frames must all be sent once encoded (dropping deltas corrupts the stream), so gate on canSendFrame before encoding. */
+  sendFrame(data: ArrayBuffer, tCaptureMs: number) {
+    if (!this.live || this.ws.readyState !== WebSocket.OPEN) return;
     this.sent += 1;
     this.send({ type: "frame_meta", seq: this.sent, t_capture_ms: tCaptureMs });
-    this.ws.send(jpeg);
+    this.ws.send(data);
+    this.bytesUp += data.byteLength;
+  }
+
+  /** Bytes sent and received since the previous call. */
+  takeTraffic() {
+    const t = { up: this.bytesUp, down: this.bytesDown };
+    this.bytesUp = this.bytesDown = 0;
+    return t;
   }
 
   close() {
@@ -83,8 +105,8 @@ export class JoyAIClient {
       // Only orientation matters; the server snaps to its own 840x480.
       width: 840,
       height: 480,
-      input_codec: "mjpeg",
-      output_codec: "mjpeg",
+      input_codec: "h264",
+      output_codec: "h264",
       use_pe: false,
     });
   }
@@ -99,10 +121,11 @@ export class JoyAIClient {
       // Each binary output frame is announced by the output_frame JSON just before it.
       const meta = this.pendingOutput;
       this.pendingOutput = null;
+      this.bytesDown += data.byteLength;
       if (!meta) return;
       this.received += 1;
       if (this.received % 4 === 0) this.send({ type: "ack", recv: this.received });
-      this.handlers.onFrame(new Blob([data], { type: "image/jpeg" }), Date.now() - meta.t_capture_ms);
+      this.handlers.onFrame(data, meta);
       return;
     }
 
@@ -110,6 +133,9 @@ export class JoyAIClient {
     // After a garment switch, drop what the server still sends for the previous session.
     if (SESSION_SCOPED.has(msg.type) && msg.session_id !== this.sessionId) return;
     switch (msg.type) {
+      case "pong":
+        if (typeof msg.t === "number") this.rttMs = Date.now() - msg.t;
+        break;
       case "queue_position":
         this.handlers.onStatus({ kind: "queued", ahead: msg.ahead ?? msg.position ?? 0 });
         break;
@@ -125,7 +151,7 @@ export class JoyAIClient {
         this.framesIn = Math.max(this.framesIn, msg.frames_in ?? 0);
         break;
       case "output_frame":
-        this.pendingOutput = { t_capture_ms: msg.t_capture_ms };
+        this.pendingOutput = { t_capture_ms: msg.t_capture_ms, key: !!msg.key };
         break;
       case "chunk_done":
         this.framesIn = Math.max(this.framesIn, msg.frames_in ?? 0);

@@ -3,6 +3,7 @@
 
   python joyai_modal.py download        # once: ~51GB of weights into a volume, CPU only
   modal serve joyai_modal.py            # prints a URL; open it, allow the webcam. Ctrl-C stops billing.
+  JOYAI_REGION=eu modal serve ...       # pin the GPU nearer the viewer; Modal charges 1.5x for "eu"
 
 Follows DEPLOYMENT.md's "RTX PRO 6000, 480p @ 24 FPS" setup: cuDNN attention (no SageAttention/FA4),
 FP8 via joyomni_ops built for sm_120a. The optional face/person ONNX gates are left out on purpose:
@@ -22,6 +23,7 @@ JOYAI_SHA = "ca17e1d1030f454cb98b0ed549b4d31a60139ceb"
 CUTLASS_SHA = "dcf215af"  # pinned in DEPLOYMENT.md
 DEPLOY = "/opt/joyai/deploy"
 PORT = 8080
+REGION = os.environ.get("JOYAI_REGION") or None
 
 app = modal.App("live-try-on-joyai")
 weights = modal.Volume.from_name("joyai-weights", create_if_missing=True)
@@ -84,6 +86,7 @@ def _exit_with(proc: subprocess.Popen):
 @app.function(
     image=image,
     gpu="RTX-PRO-6000",
+    region=REGION,
     volumes={"/weights": weights, "/cache": cache},
     timeout=60 * 60,
     scaledown_window=5 * 60,
