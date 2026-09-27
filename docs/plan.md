@@ -1,14 +1,7 @@
 # Plan
 
-## Phase 1: Bake-off (current), about 1–2 weeks, no training
-1. **Helios-Distilled bench** on the GPU box (`helios_bench.py`): sanity check, then your own hard clip.
-   - Measure: chunk compute, estimated live delay, keeps-up-with-real-time, VRAM.
-   - Watch: garment accuracy, identity, background, chunk seams, occlusion, drift.
-2. **Quality ceiling:** run MagicTryOn and the FLUX.2 klein try-on LoRA offline on the same footage and garments. Check licenses first.
-3. **Cheap hack test:** make one high-quality try-on keyframe with FLUX.2 klein, then use it as the image condition for a streaming model. If that's good enough, heavy training may not be needed.
-4. If Helios latency is the blocker, bench **Causal Forcing** and **CausVid** the same way. Add a script per model with the same output format.
-
-Decision table: see README.md.
+## Phase 1: Bake-off (done)
+Helios-Distilled was too slow for live. JoyAI-Video-Edit runs live on an RTX PRO 6000 and takes the garment as a reference image. See `pivot-joyai.md`.
 
 ## Phase 2: Live pipeline skeleton, about 1 week (can start in parallel)
 - Browser webcam over WebRTC to a Python server (FastAPI + aiortc) on the GPU box, then processed frames back.
