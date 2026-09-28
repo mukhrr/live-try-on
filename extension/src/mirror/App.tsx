@@ -189,6 +189,7 @@ export default function App() {
         <div className="flex items-center gap-2">
           <img src="/icons/icon32.png" alt="" className="h-5 w-5" />
           <span className="text-sm font-semibold tracking-wide">Toshoyna</span>
+          <span className="font-mono text-[10px] text-zinc-500">v{chrome.runtime.getManifest().version}</span>
         </div>
         <button
           onClick={() => setShowStats((v) => !v)}

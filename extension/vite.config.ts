@@ -1,9 +1,22 @@
+import { readFileSync } from "node:fs";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+
+// package.json is the only place the version lives; `pnpm release` bumps it.
+function manifest(): Plugin {
+  return {
+    name: "toshoyna-manifest",
+    generateBundle() {
+      const { version } = JSON.parse(readFileSync("package.json", "utf8"));
+      const source = JSON.parse(readFileSync("manifest.json", "utf8"));
+      this.emitFile({ type: "asset", fileName: "manifest.json", source: JSON.stringify({ ...source, version }, null, 2) });
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), manifest()],
   build: {
     outDir: "dist",
     emptyOutDir: true,

@@ -18,6 +18,10 @@ Flow: on any shop page the user selects a product on screen, and a mirror window
 - **Validate assumptions before writing code.** Measure first, then build.
 - Frontend stack: TypeScript, React/Next.js, Tailwind. Backend for ML: Python.
 
+## Releases
+- **Bump the extension version on every release** (owner, 2026-09-28): `cd extension && pnpm release [patch|minor|major]` bumps `package.json`, builds, commits and tags `extension-vX.Y.Z`; then `git push --follow-tags`. `package.json` is the only place the version lives (the build writes it into the manifest), and the mirror header shows it so the loaded version is visible.
+- A release is any build handed to the owner to reload. Patch for fixes, minor for features.
+
 ## Current status
 - [x] Research: how Lucy is built, open alternatives, model shortlist, licenses
 - [x] Helios-Distilled benched on a Modal H100 and dropped (2026-09-25): best case 2.27s per 33-frame chunk vs a 1.38s live budget. Code removed; numbers in `docs/pivot-joyai.md`
