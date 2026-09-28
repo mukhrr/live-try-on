@@ -206,7 +206,7 @@ export default function App() {
           width={FRAME_WIDTH}
           height={FRAME_HEIGHT}
           aria-label="You, wearing the product"
-          className={`h-full w-full object-cover ${hasOutput ? "" : "invisible"}`}
+          className={`h-full w-full object-contain ${hasOutput ? "" : "invisible"}`}
         />
         <video ref={videoRef} muted playsInline className="hidden" />
 
