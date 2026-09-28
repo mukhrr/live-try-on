@@ -2,6 +2,7 @@
 // mirroring what its own static/index.html does, with H.264 in both directions.
 
 import type { OutputMeta } from "./codec";
+import { FRAME_HEIGHT, FRAME_WIDTH } from "./media";
 
 export type Status =
   | { kind: "connecting" }
@@ -47,7 +48,8 @@ export class JoyAIClient {
     this.ws.onmessage = (e) => this.onMessage(e.data);
     this.ws.onclose = (e) => {
       this.live = false;
-      handlers.onStatus({ kind: "closed", reason: e.reason || `connection closed (${e.code})` });
+      console.info("Toshoyna: socket closed", e.code, e.reason);
+      handlers.onStatus({ kind: "closed", reason: e.reason || "lost the connection to the server" });
     };
     // Pings carry our receive count, which the server uses to drop chunks when the downlink falls behind.
     this.pingTimer = setInterval(() => this.send({ type: "ping", t: Date.now(), recv: this.received }), 1000);
@@ -102,9 +104,9 @@ export class JoyAIClient {
       type: "start",
       prompt: this.pendingStart.prompt,
       ref_image: this.pendingStart.refImage,
-      // Only orientation matters; the server snaps to its own 840x480.
-      width: 840,
-      height: 480,
+      // Only orientation matters; the server snaps to its own size for that orientation.
+      width: FRAME_WIDTH,
+      height: FRAME_HEIGHT,
       input_codec: "h264",
       output_codec: "h264",
       use_pe: false,

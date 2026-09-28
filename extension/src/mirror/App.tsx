@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { Product } from "../types";
 import { DownlinkDecoder, UplinkEncoder } from "./codec";
+import { garmentNoun, instructionFor } from "./garment";
 import { JoyAIClient, type Status } from "./joyai";
-import { PacedPlayer } from "./playback";
 import { drawMirroredFrame, FRAME_HEIGHT, FRAME_WIDTH, loadRefImage } from "./media";
+import { PacedPlayer } from "./playback";
 
 const DEFAULT_SERVER = import.meta.env.VITE_SERVER_URL ?? "https://mshakhriyorov8--live-try-on-joyai-serve-dev.modal.run";
-const DEFAULT_PROMPT = "Put the clothes from Image 1 on the model in the video";
 const SEND_FPS = 24;
 const LATENCY_WINDOW = 48;
 
@@ -34,23 +34,36 @@ async function waitForServer(base: string, signal: AbortSignal, onTick: (s: numb
   }
 }
 
+async function loadProductImage(product: Product) {
+  try {
+    return await loadRefImage(product.src);
+  } catch {
+    // The high-resolution guess can 404 or be blocked; the image the page showed is known to load.
+    return loadRefImage(product.shownSrc);
+  }
+}
+
 export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const outRef = useRef<HTMLCanvasElement>(null);
   const clientRef = useRef<JoyAIClient | null>(null);
   const latencies = useRef<number[]>([]);
+  const shownFrames = useRef(0);
 
   const [server, setServer] = useState<string | null>(null);
   const [product, setProduct] = useState<Product | null>(null);
-  const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
-  const [draftPrompt, setDraftPrompt] = useState(DEFAULT_PROMPT);
+  const [customPrompt, setCustomPrompt] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [phase, setPhase] = useState<Phase>({ kind: "waking", seconds: 0 });
   const [connected, setConnected] = useState(false);
   const [hasOutput, setHasOutput] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
   const [net, setNet] = useState<NetStats | null>(null);
-  const shownFrames = useRef(0);
+  const [showStats, setShowStats] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const prompt = customPrompt ?? (product ? instructionFor(product.name) : "");
 
   useEffect(() => {
     chrome.storage.local.get("serverUrl").then(({ serverUrl }) => setServer((serverUrl as string) || DEFAULT_SERVER));
@@ -68,6 +81,7 @@ export default function App() {
     let stream: MediaStream | null = null;
     let timer: ReturnType<typeof setInterval> | undefined;
     let closePlayer = () => {};
+    setHasOutput(false);
 
     (async () => {
       await waitForServer(server, abort.signal, (seconds) => setPhase({ kind: "waking", seconds }));
@@ -137,14 +151,14 @@ export default function App() {
       setConnected(false);
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, [server]);
+  }, [server, attempt]);
 
   useEffect(() => {
     if (!connected || !product) return;
     let cancelled = false;
-    loadRefImage(product.src)
+    loadProductImage(product)
       .then((refImage) => !cancelled && clientRef.current?.start({ prompt, refImage }))
-      .catch((e) => setPhase({ kind: "error", message: `Couldn't load the product photo: ${e}` }));
+      .catch((e) => setPhase({ kind: "error", message: `Couldn't load the product photo (${e}). Try picking another image.` }));
     latencies.current = [];
     setLatency(null);
     return () => {
@@ -152,77 +166,173 @@ export default function App() {
     };
   }, [connected, product, prompt]);
 
+  function snapshot() {
+    outRef.current?.toBlob((blob) => {
+      if (!blob) return;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `toshoyna-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-")}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      setToast("Saved to Downloads");
+      setTimeout(() => setToast(null), 2000);
+    }, "image/png");
+  }
+
+  const live = phase.kind === "live";
+  const stopped = phase.kind === "closed" || phase.kind === "error";
+  const garment = product ? (product.name.split(" | ").map(garmentNoun).find(Boolean) ?? "clothes") : null;
+
   return (
-    <main className="flex h-screen flex-col bg-black font-sans text-white">
-      <div className="relative flex-1 overflow-hidden">
+    <main className="flex h-screen flex-col bg-zinc-950 font-sans text-white select-none">
+      <header className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center gap-2">
+          <img src="/icons/icon32.png" alt="" className="h-5 w-5" />
+          <span className="text-sm font-semibold tracking-wide">Toshoyna</span>
+        </div>
+        <button
+          onClick={() => setShowStats((v) => !v)}
+          title="Show connection details"
+          className="flex items-center gap-2 rounded-full bg-white/10 px-2.5 py-0.5 font-mono text-[11px] hover:bg-white/15"
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${live ? "bg-emerald-400" : stopped ? "bg-red-400" : "bg-amber-400"}`} />
+          {live && latency !== null ? `${(latency / 1000).toFixed(1)}s delay` : live ? "live" : stopped ? "stopped" : "starting"}
+        </button>
+      </header>
+
+      <div className="relative mx-2 flex-1 overflow-hidden rounded-2xl bg-black">
         <canvas
           ref={outRef}
           width={FRAME_WIDTH}
           height={FRAME_HEIGHT}
           aria-label="You, wearing the product"
-          className={`h-full w-full object-contain ${hasOutput ? "" : "hidden"}`}
+          className={`h-full w-full object-cover ${hasOutput ? "" : "invisible"}`}
         />
-        {!hasOutput && (
-          <div className="flex h-full items-center justify-center p-6 text-center text-sm text-zinc-400">
-            {statusText(phase, product)}
-          </div>
-        )}
         <video ref={videoRef} muted playsInline className="hidden" />
 
-        {product && (
-          <img
-            src={product.src}
-            alt={product.alt || "Selected product"}
-            title={product.alt}
-            className="absolute bottom-3 left-3 h-16 w-16 rounded-lg border border-white/30 bg-white object-contain"
-          />
-        )}
-        <div className="absolute right-3 top-3 flex flex-col items-end gap-1 font-mono text-xs">
-          <div className="flex items-center gap-2 rounded-full bg-black/60 px-3 py-1">
-            <span className={`h-2 w-2 rounded-full ${phase.kind === "live" ? "bg-emerald-400" : "bg-amber-400"}`} />
-            {phase.kind === "live" && latency !== null ? `${Math.round(latency)} ms` : phase.kind}
+        {(!hasOutput || stopped) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/70 p-8 text-center">
+            {!stopped && product && <Spinner />}
+            <p className="text-sm leading-relaxed text-zinc-300">{statusText(phase, product)}</p>
+            {stopped && (
+              <button onClick={() => setAttempt((n) => n + 1)} className="rounded-full bg-amber-400 px-4 py-1.5 text-sm font-medium text-black hover:bg-amber-300">
+                Try again
+              </button>
+            )}
           </div>
-          {phase.kind === "live" && net && (
-            <div className="rounded bg-black/60 px-2 py-0.5 text-[10px] text-zinc-300">
-              ping {net.rtt ?? "–"} ms · ↑{net.upMbit.toFixed(1)} ↓{net.downMbit.toFixed(1)} Mbit/s · {net.fps} fps
+        )}
+
+        {hasOutput && phase.kind === "starting" && (
+          <div className="absolute inset-x-0 top-3 flex justify-center">
+            <span className="flex items-center gap-2 rounded-full bg-black/70 px-3 py-1 text-xs">
+              <Spinner small /> Switching to the {garment}…
+            </span>
+          </div>
+        )}
+
+        {showStats && live && net && (
+          <div className="absolute right-2 top-2 rounded-lg bg-black/70 px-2 py-1 font-mono text-[10px] leading-relaxed text-zinc-300">
+            <div>delay {latency !== null ? Math.round(latency) : "–"} ms</div>
+            <div>ping {net.rtt ?? "–"} ms</div>
+            <div>
+              ↑{net.upMbit.toFixed(1)} ↓{net.downMbit.toFixed(1)} Mbit/s
             </div>
-          )}
-        </div>
+            <div>{net.fps} fps</div>
+          </div>
+        )}
+
+        {toast && (
+          <div className="absolute inset-x-0 bottom-4 flex justify-center">
+            <span className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-medium text-black">{toast}</span>
+          </div>
+        )}
       </div>
 
-      <form
-        className="flex gap-2 border-t border-white/10 p-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setPrompt(draftPrompt.trim() || DEFAULT_PROMPT);
-        }}
-      >
-        <input
-          value={draftPrompt}
-          onChange={(e) => setDraftPrompt(e.target.value)}
-          className="min-w-0 flex-1 rounded bg-zinc-900 px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-amber-400"
-          aria-label="Instruction"
-        />
-        <button type="button" onClick={() => setShowSettings((v) => !v)} className="rounded px-2 text-sm text-zinc-400 hover:text-white">
-          Server
-        </button>
-      </form>
+      <footer className="flex items-center gap-3 px-3 py-2">
+        {product ? (
+          <img
+            src={product.shownSrc}
+            alt={product.alt || "Selected product"}
+            title={product.name}
+            className="h-11 w-11 shrink-0 rounded-lg bg-white object-contain"
+          />
+        ) : (
+          <div className="h-11 w-11 shrink-0 rounded-lg bg-white/10" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm">{product?.alt || product?.name.split(" | ")[0] || "No product yet"}</div>
+          <div className="truncate text-xs text-zinc-500">{product ? `Trying on: ${garment}` : "Pick one from a shop page"}</div>
+        </div>
+        <IconButton label="Save a photo" disabled={!hasOutput} onClick={snapshot}>
+          <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+          <circle cx="12" cy="13" r="3.5" />
+        </IconButton>
+        <IconButton label="Settings" onClick={() => setShowSettings((v) => !v)}>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" />
+        </IconButton>
+      </footer>
+
       {showSettings && server && (
         <form
-          className="flex gap-2 p-2 pt-0"
+          className="space-y-2 border-t border-white/10 p-3 text-xs"
           onSubmit={(e) => {
             e.preventDefault();
-            const url = String(new FormData(e.currentTarget).get("url")).replace(/\/+$/, "");
-            chrome.storage.local.set({ serverUrl: url });
-            setServer(url);
+            const form = new FormData(e.currentTarget);
+            const text = String(form.get("prompt")).trim();
+            setCustomPrompt(text && text !== instructionFor(product?.name ?? "") ? text : null);
+            const url = String(form.get("url")).trim().replace(/\/+$/, "");
+            if (url !== server) {
+              chrome.storage.local.set({ serverUrl: url });
+              setServer(url);
+            }
             setShowSettings(false);
           }}
         >
-          <input name="url" defaultValue={server} className="min-w-0 flex-1 rounded bg-zinc-900 px-2 py-1 font-mono text-xs" aria-label="Server URL" />
-          <button className="rounded bg-amber-400 px-2 text-xs font-medium text-black">Save</button>
+          <label className="block">
+            <span className="text-zinc-400">Instruction</span>
+            <textarea
+              name="prompt"
+              defaultValue={prompt}
+              rows={2}
+              className="mt-1 w-full resize-none rounded bg-zinc-900 px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-amber-400"
+            />
+          </label>
+          <label className="block">
+            <span className="text-zinc-400">Server</span>
+            <input name="url" defaultValue={server} className="mt-1 w-full rounded bg-zinc-900 px-2 py-1 font-mono outline-none focus:ring-1 focus:ring-amber-400" />
+          </label>
+          <div className="flex justify-end gap-2">
+            {customPrompt !== null && (
+              <button type="button" onClick={() => setCustomPrompt(null)} className="rounded px-2 py-1 text-zinc-400 hover:text-white">
+                Automatic instruction
+              </button>
+            )}
+            <button className="rounded bg-amber-400 px-3 py-1 font-medium text-black hover:bg-amber-300">Save</button>
+          </div>
         </form>
       )}
     </main>
+  );
+}
+
+function Spinner({ small = false }: { small?: boolean }) {
+  return <span className={`${small ? "h-3 w-3 border-2" : "h-8 w-8 border-[3px]"} animate-spin rounded-full border-white/20 border-t-amber-400`} />;
+}
+
+function IconButton({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className="rounded-full p-2 text-zinc-300 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent"
+    >
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round">
+        {children}
+      </svg>
+    </button>
   );
 }
 
@@ -230,7 +340,7 @@ function statusText(phase: Phase, product: Product | null) {
   if (!product) return "Click the Toshoyna icon on a shop page, then click a product photo.";
   switch (phase.kind) {
     case "waking":
-      return `Waking up the mirror… ${phase.seconds}s (the first start after a break takes about 2 minutes)`;
+      return phase.seconds < 10 ? "Waking up the mirror…" : `Waking up the mirror… ${phase.seconds}s. After a break this takes about 2 minutes.`;
     case "camera":
       return "Allow camera access to see yourself in the mirror.";
     case "connecting":
@@ -238,11 +348,10 @@ function statusText(phase: Phase, product: Product | null) {
     case "queued":
       return `Someone else is using the mirror. You're next after ${phase.ahead}.`;
     case "starting":
-      return "Dressing you up…";
     case "live":
-      return "Hold still for a second…";
+      return "Dressing you up… stand back so your upper body is in view.";
     case "closed":
-      return `Mirror stopped: ${phase.reason}. Reopen to try again.`;
+      return `The mirror stopped: ${phase.reason}.`;
     case "error":
       return phase.message;
   }

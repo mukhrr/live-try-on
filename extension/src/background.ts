@@ -1,7 +1,8 @@
 import type { Product } from "./types";
 
-const MIRROR_WIDTH = 560;
-const MIRROR_HEIGHT = 440;
+// Portrait frame (480x840) plus the mirror's top and bottom bars.
+const MIRROR_WIDTH = 400;
+const MIRROR_HEIGHT = 780;
 
 chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id === undefined) return;

@@ -3,8 +3,29 @@
   "name": "Toshoyna",
   "description": "Pick a product on any shop page and see yourself wearing it, live.",
   "version": "0.1.0",
-  "action": { "default_title": "Toshoyna: pick a product to try on" },
-  "background": { "service_worker": "background.js", "type": "module" },
-  "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["<all_urls>"]
+  "action": {
+    "default_title": "Toshoyna: pick a product to try on",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }

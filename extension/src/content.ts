@@ -3,6 +3,44 @@
 type PickWindow = Window & { __toshoynaStopPick?: () => void };
 
 const MIN_SIZE = 80;
+const IMAGE_URL = /\.(jpe?g|png|webp|avif)(\?|#|$)/i;
+// Attributes shops use for the full-size or not-yet-loaded image.
+const HIRES_ATTRS = ["data-zoom-image", "data-zoom-src", "data-large-image", "data-old-hires", "data-full", "data-src"];
+
+function largestSrcset(srcset: string | null): string | null {
+  if (!srcset) return null;
+  let best: { url: string; w: number } | null = null;
+  for (const part of srcset.split(",")) {
+    const [url, size = "1x"] = part.trim().split(/\s+/);
+    const w = parseFloat(size) * (size.endsWith("x") ? 1000 : 1);
+    if (url && (!best || w > best.w)) best = { url, w };
+  }
+  return best ? new URL(best.url, location.href).href : null;
+}
+
+/** The sharpest version of a product photo the page offers; the model sees garment detail from it. */
+function bestImageUrl(img: HTMLImageElement): string {
+  for (const attr of HIRES_ATTRS) {
+    const v = img.getAttribute(attr);
+    if (v && !v.startsWith("data:")) return new URL(v, location.href).href;
+  }
+  const link = img.closest("a")?.href;
+  if (link && IMAGE_URL.test(link)) return link;
+  const sources = [img.getAttribute("srcset"), ...Array.from(img.closest("picture")?.querySelectorAll("source") ?? [], (s) => s.getAttribute("srcset"))];
+  for (const srcset of sources) {
+    const url = largestSrcset(srcset);
+    if (url) return url;
+  }
+  return img.currentSrc || img.src;
+}
+
+/** Text that names the product, most specific first, for phrasing the try-on instruction. */
+function productName(img: HTMLImageElement): string {
+  const og = document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.content;
+  const h1 = document.querySelector("h1")?.textContent;
+  const parts = [img.alt, img.title, og, h1, document.title].map((t) => t?.trim()).filter(Boolean);
+  return [...new Set(parts)].join(" | ").slice(0, 300);
+}
 
 function pickableImage(target: EventTarget | null): HTMLImageElement | null {
   if (!(target instanceof Element)) return null;
@@ -53,7 +91,13 @@ function startPick() {
     e.stopImmediatePropagation();
     chrome.runtime.sendMessage({
       type: "picked",
-      product: { src: img.currentSrc || img.src, alt: img.alt.trim(), pageUrl: location.href },
+      product: {
+        src: bestImageUrl(img),
+        shownSrc: img.currentSrc || img.src,
+        alt: img.alt.trim(),
+        name: productName(img),
+        pageUrl: location.href,
+      },
     });
     stop();
   };

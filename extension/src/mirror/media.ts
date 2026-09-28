@@ -1,5 +1,6 @@
-export const FRAME_WIDTH = 840;
-export const FRAME_HEIGHT = 480;
+// Portrait, like a mirror: more of the body and garment fits. JoyAI serves 480x840 natively (its warmup compiles it).
+export const FRAME_WIDTH = 480;
+export const FRAME_HEIGHT = 840;
 const REF_MAX_SIDE = 1024;
 
 /** Product photo as a data URL. The extension's host permission lets it fetch from any shop without CORS. */
@@ -19,7 +20,7 @@ export async function loadRefImage(src: string): Promise<string> {
   });
 }
 
-/** Center-crops the camera to 840x480 and mirrors it, as JoyAI's own client does. */
+/** Center-crops the camera to the frame size and mirrors it, as JoyAI's own client does. */
 export function drawMirroredFrame(ctx: CanvasRenderingContext2D, video: HTMLVideoElement) {
   const vw = video.videoWidth;
   const vh = video.videoHeight;

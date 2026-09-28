@@ -4,7 +4,7 @@
 import { FRAME_HEIGHT, FRAME_WIDTH } from "./media";
 
 const KEYFRAME_INTERVAL = 8;
-// JoyAI's "high" uplink tier: 0.6 * 4 Mbit/s at 1248x720 16 FPS, scaled to 840x480 at 24 FPS (~1.3 Mbit/s).
+// JoyAI's "high" uplink tier: 0.6 * 4 Mbit/s at 1248x720 16 FPS, scaled to our 480x840 frame at 24 FPS (~1.3 Mbit/s).
 const UPLINK_BITRATE = Math.round(0.6 * 4_000_000 * ((FRAME_WIDTH * FRAME_HEIGHT) / (1248 * 720)) * Math.sqrt(24 / 16));
 
 export class UplinkEncoder {

@@ -24,7 +24,9 @@ Flow: on any shop page the user selects a product on screen, and a mirror window
 - [x] JoyAI-Video-Edit self-hosted on a Modal RTX PRO 6000 (`joyai_modal.py`, `modal serve joyai_modal.py`), 840x480 @ 24 FPS, their own web UI. Cold start ~25 min (compile), warm start ~1m40s with the compile cache on volume `joyai-compile-cache`. 39GB VRAM. Owner tried it live 2026-09-25: "looks good"
 - [x] Helios code, bench results and Modal volumes removed (2026-09-27)
 - [x] Toshoyna Chrome extension v0.1 (`extension/`, 2026-09-27): toolbar icon starts pick mode, click a product photo, a popup mirror window streams the webcam to JoyAI (MJPEG over its `/ws` protocol) with the photo as `ref_image`. Tested end to end in Chromium against `extension/dev/mock_joyai.py` (~400ms with a simulated 200ms chunk)
-- [ ] Real capture-to-display latency against JoyAI on Modal
+- [x] Real latency, owner's webcam in Tashkent to Modal US (2026-09-27), after H.264 + paced playback: **~1.3s capture-to-display**, ping 456ms, 0.7 Mbit/s each way, 21 fps. Try-on quality good. Rough split: 0.33s 8-frame buffer + 0.27s compute + ~0.45s network + ~0.25s transfer/decode/pacing. JoyAI's floor on this GPU is ~0.7-0.8s even with a perfect network
+- [x] Extension polish (2026-09-28): portrait 480x840 mirror, highest-resolution product image (zoom attrs, srcset, image links) with fallback, garment-aware instruction from the product name (English/Russian/Uzbek, `garment.ts`), status cards with Try again, stats behind the delay badge, snapshot to Downloads, mirror icon
+- [x] `JOYAI_REGION=eu`: Modal never scheduled an RTX PRO 6000 in the EU (pending 1h40m, no container, no cost). US only for this GPU for now
 - [x] Phase 2 skeleton: `server/` (FastAPI + aiortc, pluggable `FrameProcessor`) and `web/` (Next.js webcam page with pixel-marker latency overlay). Tested on the Mac with headless Chrome and a fake camera: passthrough about 130ms capture-to-display on localhost, and `dummy` at 100ms/frame holds at about 250ms and drops frames instead of queueing
 - [ ] Measure the skeleton over the LAN (Mac browser to GPU box) before plugging in a model
 
