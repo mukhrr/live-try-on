@@ -8,7 +8,7 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["chrome"]
+    "types": ["chrome", "node"]
   },
   "include": ["src", "vite.config.ts"]
 }
