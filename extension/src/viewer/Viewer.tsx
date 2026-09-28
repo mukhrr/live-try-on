@@ -6,7 +6,8 @@ import { type FrameSize, frameSizeFor } from "../mirror/media";
 import { PacedPlayer } from "../mirror/playback";
 import type { Product } from "../types";
 
-const DEFAULT_SERVER = import.meta.env.VITE_SERVER_URL ?? "https://mshakhriyorov8--live-try-on-joyai-serve-dev.modal.run";
+// The server has no login, so its URL is kept out of the repo: set it in extension/.env.local or under Settings.
+const DEFAULT_SERVER = import.meta.env.VITE_SERVER_URL ?? "";
 const LATENCY_WINDOW = 48;
 
 type Mode = "float" | "full";
@@ -40,6 +41,7 @@ export default function Viewer({ mode }: { mode: Mode }) {
 
   const prompt = customPrompt ?? (product ? instructionFor(product.name) : "");
   const settings: ViewerSettings | null = serverUrl ? { size, product, serverUrl, prompt: customPrompt } : null;
+  const noServer = serverUrl === "";
   settingsRef.current = settings;
 
   // Product, server and instruction live in extension storage so the float and the full window agree.
@@ -197,8 +199,10 @@ export default function Viewer({ mode }: { mode: Mode }) {
 
         {(!hasOutput || stopped) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/70 p-6 text-center">
-            {!stopped && product && phase.kind !== "needs-camera" && <Spinner />}
-            <p className={`leading-relaxed text-zinc-300 ${float ? "text-xs" : "text-sm"}`}>{statusText(phase, product)}</p>
+            {!stopped && !noServer && product && phase.kind !== "needs-camera" && <Spinner />}
+            <p className={`leading-relaxed text-zinc-300 ${float ? "text-xs" : "text-sm"}`}>
+              {noServer ? "No mirror server set. Open full screen and add it under Settings (⚙)." : statusText(phase, product)}
+            </p>
             {phase.kind === "needs-camera" && (
               <PrimaryButton onClick={() => chrome.runtime.sendMessage({ type: "grant-camera" })}>Allow camera</PrimaryButton>
             )}
@@ -276,7 +280,7 @@ export default function Viewer({ mode }: { mode: Mode }) {
         </footer>
       )}
 
-      {!float && showSettings && serverUrl && (
+      {!float && showSettings && serverUrl !== null && (
         <form
           className="space-y-2 border-t border-white/10 p-3 text-xs"
           onSubmit={(e) => {

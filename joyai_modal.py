@@ -5,11 +5,15 @@
   modal serve joyai_modal.py            # prints a URL; open it, allow the webcam. Ctrl-C stops billing.
   JOYAI_REGION=eu modal serve ...       # pin the GPU nearer the viewer; Modal charges 1.5x for "eu"
 
+The server has no login, so its URL is the only thing keeping strangers off the GPU. The URL's label is random
+and lives in the git-ignored .joyai-label (created on first run), never in the repo.
+
 Follows DEPLOYMENT.md's "RTX PRO 6000, 480p @ 24 FPS" setup: cuDNN attention (no SageAttention/FA4),
 FP8 via joyomni_ops built for sm_120a. The optional face/person ONNX gates are left out on purpose:
 the YOLOv8 export is AGPL, and the server runs edits unconditionally without them.
 """
 import os
+import secrets
 import subprocess
 import sys
 import threading
@@ -24,6 +28,16 @@ CUTLASS_SHA = "dcf215af"  # pinned in DEPLOYMENT.md
 DEPLOY = "/opt/joyai/deploy"
 PORT = 8080
 REGION = os.environ.get("JOYAI_REGION") or None
+
+
+def _label() -> str:
+    path = Path(__file__).parent / ".joyai-label"
+    if not path.exists():
+        path.write_text(f"toshoyna-{secrets.token_hex(6)}\n")
+    return path.read_text().strip()
+
+
+LABEL = os.environ.get("JOYAI_LABEL") or _label()
 
 app = modal.App("live-try-on-joyai")
 weights = modal.Volume.from_name("joyai-weights", create_if_missing=True)
@@ -93,7 +107,7 @@ def _exit_with(proc: subprocess.Popen):
     max_containers=1,
 )
 @modal.concurrent(max_inputs=50)
-@modal.web_server(PORT, startup_timeout=40 * 60)
+@modal.web_server(PORT, startup_timeout=40 * 60, label=LABEL)
 def serve():
     env = {
         "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/local/cuda/bin",

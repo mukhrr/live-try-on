@@ -9,7 +9,7 @@ A **real-time video virtual try-on**: live webcam in, the same person wearing a 
 
 ## How it works
 - **Model: JoyAI-Video-Edit** (`jd-opensource/JoyAI-Video-Edit`, Apache 2.0 code and weights, 16B). Streaming video-to-video editing that takes the garment as a reference image ("Put the hoodie from Image 1 on the model in the video"). It edits in 8-frame chunks.
-- **GPU: Modal, RTX PRO 6000 (96GB), US only.** `joyai_modal.py` runs JoyAI's own server (FastAPI + websocket `/ws`) at 840x480 or 480x840, 24 FPS. Weights live on volume `joyai-weights` (~51GB), the torch.compile cache on `joyai-compile-cache`. Cold start ~25 min (compile), warm ~2 min; containers stop after 5 idle minutes. `joyai_patches.py` lengthens two warmup timeouts that assume a warm cache. The server allows one session at a time.
+- **GPU: Modal, RTX PRO 6000 (96GB), US only.** `joyai_modal.py` runs JoyAI's own server (FastAPI + websocket `/ws`) at 840x480 or 480x840, 24 FPS. Weights live on volume `joyai-weights` (~51GB), the torch.compile cache on `joyai-compile-cache`. Cold start ~25 min (compile), warm ~2 min; containers stop after 5 idle minutes. `joyai_patches.py` lengthens two warmup timeouts that assume a warm cache. The server allows one session at a time and has **no login**: its URL label is random, kept in git-ignored `.joyai-label`, and the extension reads the URL from git-ignored `extension/.env.local`. Never commit either. (The repo is public; the old `live-try-on-joyai-serve` URL in history is retired.)
 - **Extension (`extension/`)**, TypeScript + React + Tailwind, Vite, Manifest V3:
   - `src/content.ts`: pick mode (highlight images, click to pick), picks the sharpest image the page offers, then injects the floating mirror iframe. Must stay import-free (injected as a classic script).
   - `src/engine/`: runs in an **offscreen document**. Camera, JoyAI websocket client (`mirror/joyai.ts`), H.264 uplink encoder. The float never touches the camera, so shops can't block it and Chrome doesn't prompt per site.
@@ -29,7 +29,7 @@ A **real-time video virtual try-on**: live webcam in, the same person wearing a 
 ## Hardware
 - **GPU:** not owned (buying an RTX PRO 6000 is ~$14-16k as of 2026-09). Rented per second on Modal, ~$3/hour while a container runs, from the $30/month credit plus a card on file. Blackwell needs **PyTorch for CUDA 12.8+**.
 - **MacBook (Apple Silicon):** code, extension, testing. Models don't run here.
-- Repo: github.com/mukhrr/live-try-on (private). Active branch `joyai-live`, not yet merged into `main`.
+- Repo: github.com/mukhrr/live-try-on (public since 2026-09-28). Work on `main`.
 
 ## Owner preferences
 - Direct, casual communication. No filler.
@@ -48,6 +48,7 @@ A **real-time video virtual try-on**: live webcam in, the same person wearing a 
 4. **Licenses:** avoid Krea Realtime 14B, Lucy Edit Dev, CausVid, Rolling Forcing (non-commercial). JoyAI's optional YOLOv8 person gate is AGPL, so it's left out. Verify MagicTryOn's license before using it.
 
 ## Open items
+- The server has no authentication; a secret URL is the only guard. Needs real auth before any public release.
 - The dev server URL comes from `modal serve` and only works while that command runs. A real release needs `modal deploy` for a stable URL, and a way to handle the ~2 min wake-up.
 - One session per GPU: a second user is queued, and JoyAI's server drops queued clients after about a minute. Real users need a queue or more containers.
 - The first-run camera permission page (`permission.html`) is untested with a real Chrome prompt; tests auto-grant the camera.

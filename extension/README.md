@@ -15,7 +15,7 @@ pnpm build            # or `pnpm dev` to rebuild on change
 
 Load it in Chrome: `chrome://extensions`, turn on Developer mode, **Load unpacked**, pick `extension/dist`.
 
-The server URL defaults to the `modal serve` dev URL. Change it with **Server** at the bottom of the mirror, or build with `VITE_SERVER_URL=https://... pnpm build`. The first open after a break waits about 2 minutes while Modal starts the GPU container.
+The server URL comes from `VITE_SERVER_URL` in `extension/.env.local` (git-ignored, since the server has no login), or from Settings (⚙) in the full-screen mirror. The first open after a break waits about 2 minutes while Modal starts the GPU container.
 
 ## Testing without a GPU
 

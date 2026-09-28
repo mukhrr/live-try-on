@@ -13,6 +13,8 @@ python -m venv .venv && .venv/bin/pip install modal
 .venv/bin/modal serve joyai_modal.py          # prints the server URL; Ctrl-C stops it
 ```
 
+The server has no login, so its URL is the only thing keeping others off your GPU. The first run writes a random name for it to `.joyai-label` (git-ignored). Keep that file and the URL private.
+
 - About $3/hour while a GPU container is up. It shuts down after 5 idle minutes and wakes on the next request (~2 minutes, or ~25 on the very first start while it compiles).
 - The server URL also serves JoyAI's own test page: open it, allow the camera, add a garment photo.
 
@@ -20,6 +22,7 @@ python -m venv .venv && .venv/bin/pip install modal
 
 ```bash
 cd extension
+echo "VITE_SERVER_URL=<the URL modal serve printed>" > .env.local   # git-ignored
 pnpm install
 pnpm build
 ```
