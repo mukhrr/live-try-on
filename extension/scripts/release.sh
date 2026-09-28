@@ -15,5 +15,5 @@ pnpm build
 trap - ERR
 git add package.json
 git commit -m "Release Toshoyna extension ${version}"
-git tag "extension-${version}"
+git tag -a "extension-${version}" -m "Toshoyna extension ${version}"  # annotated, so --follow-tags pushes it
 echo "Released ${version}. Push with: git push --follow-tags"
