@@ -2,7 +2,7 @@
 // mirroring what its own static/index.html does, with H.264 in both directions.
 
 import type { OutputMeta } from "./codec";
-import { FRAME_HEIGHT, FRAME_WIDTH } from "./media";
+import type { FrameSize } from "./media";
 
 export type Status =
   | { kind: "connecting" }
@@ -11,10 +11,11 @@ export type Status =
   | { kind: "live"; width: number; height: number }
   | { kind: "closed"; reason: string };
 
-export type StartOptions = { prompt: string; refImage: string };
+export type StartOptions = { prompt: string; refImage: string; size: FrameSize };
 
 type Handlers = {
-  onStatus: (s: Status) => void;
+  /** `started` is the session's options, passed once it's live so the caller encodes at the agreed size. */
+  onStatus: (s: Status, started?: StartOptions) => void;
   /** An encoded H.264 access unit; the caller decodes it. */
   onFrame: (data: ArrayBuffer, meta: OutputMeta) => void;
 };
@@ -105,8 +106,8 @@ export class JoyAIClient {
       prompt: this.pendingStart.prompt,
       ref_image: this.pendingStart.refImage,
       // Only orientation matters; the server snaps to its own size for that orientation.
-      width: FRAME_WIDTH,
-      height: FRAME_HEIGHT,
+      width: this.pendingStart.size.width,
+      height: this.pendingStart.size.height,
       input_codec: "h264",
       output_codec: "h264",
       use_pe: false,
@@ -147,7 +148,7 @@ export class JoyAIClient {
         break;
       case "started":
         this.live = true;
-        this.handlers.onStatus({ kind: "live", width: msg.width, height: msg.height });
+        this.handlers.onStatus({ kind: "live", width: msg.width, height: msg.height }, this.pendingStart ?? undefined);
         break;
       case "accepted":
         this.framesIn = Math.max(this.framesIn, msg.frames_in ?? 0);

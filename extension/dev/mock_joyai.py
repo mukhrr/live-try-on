@@ -73,7 +73,7 @@ async def ws(websocket: WebSocket):
                 if kind == "start":
                     ref = data.get("ref_image") or ""
                     print(f"start: prompt={data.get('prompt')!r} ref_image={ref[:30]}… ({len(ref)} chars) "
-                          f"codecs={data.get('input_codec')}/{data.get('output_codec')}", flush=True)
+                          f"codecs={data.get('input_codec')}/{data.get('output_codec')} size={data.get('width')}x{data.get('height')}", flush=True)
                     if not ref.startswith("data:image/"):
                         await websocket.send_json({"type": "error", "message": "ref_image missing"})
                         continue

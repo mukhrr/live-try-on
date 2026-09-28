@@ -3,7 +3,7 @@ import type { Product } from "../types";
 import { DownlinkDecoder, UplinkEncoder } from "./codec";
 import { garmentNoun, instructionFor } from "./garment";
 import { JoyAIClient, type Status } from "./joyai";
-import { drawMirroredFrame, FRAME_HEIGHT, FRAME_WIDTH, loadRefImage } from "./media";
+import { drawMirroredFrame, type FrameSize, frameSizeFor, loadRefImage } from "./media";
 import { PacedPlayer } from "./playback";
 
 const DEFAULT_SERVER = import.meta.env.VITE_SERVER_URL ?? "https://mshakhriyorov8--live-try-on-joyai-serve-dev.modal.run";
@@ -62,8 +62,23 @@ export default function App() {
   const [showStats, setShowStats] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [size, setSize] = useState<FrameSize>(() => frameSizeFor(innerWidth, innerHeight));
 
   const prompt = customPrompt ?? (product ? instructionFor(product.name) : "");
+
+  useEffect(() => {
+    // Crossing between wide and tall restarts the session in the other orientation (below).
+    let t: ReturnType<typeof setTimeout>;
+    const onResize = () => {
+      clearTimeout(t);
+      t = setTimeout(() => setSize((prev) => {
+        const next = frameSizeFor(innerWidth, innerHeight);
+        return next.width === prev.width ? prev : next;
+      }), 300);
+    };
+    addEventListener("resize", onResize);
+    return () => removeEventListener("resize", onResize);
+  }, []);
 
   useEffect(() => {
     chrome.storage.local.get("serverUrl").then(({ serverUrl }) => setServer((serverUrl as string) || DEFAULT_SERVER));
@@ -105,7 +120,7 @@ export default function App() {
       closePlayer = () => player.close();
 
       const client = new JoyAIClient(server.replace(/^http/, "ws") + "/ws", {
-        onStatus: (status) => {
+        onStatus: (status, started) => {
           setPhase(status);
           // Each server session starts a fresh H.264 stream in both directions.
           encoder?.close();
@@ -113,7 +128,7 @@ export default function App() {
           encoder = decoder = null;
           player.reset();
           if (status.kind !== "live") return;
-          encoder = new UplinkEncoder(SEND_FPS, (data, t) => client.sendFrame(data, t));
+          encoder = new UplinkEncoder(started!.size, SEND_FPS, (data, t) => client.sendFrame(data, t));
           decoder = new DownlinkDecoder((frame, meta) => void player.push(frame, meta.t_capture_ms));
         },
         onFrame: (data, meta) => decoder?.decode(data, meta),
@@ -122,11 +137,13 @@ export default function App() {
       setConnected(true);
 
       const canvas = document.createElement("canvas");
-      canvas.width = FRAME_WIDTH;
-      canvas.height = FRAME_HEIGHT;
       const ctx = canvas.getContext("2d")!;
       timer = setInterval(() => {
         if (!encoder || !client.canSendFrame) return;
+        if (canvas.width !== encoder.size.width || canvas.height !== encoder.size.height) {
+          canvas.width = encoder.size.width;
+          canvas.height = encoder.size.height;
+        }
         const t = Date.now();
         drawMirroredFrame(ctx, video);
         encoder.encode(canvas, t);
@@ -157,14 +174,14 @@ export default function App() {
     if (!connected || !product) return;
     let cancelled = false;
     loadProductImage(product)
-      .then((refImage) => !cancelled && clientRef.current?.start({ prompt, refImage }))
+      .then((refImage) => !cancelled && clientRef.current?.start({ prompt, refImage, size }))
       .catch((e) => setPhase({ kind: "error", message: `Couldn't load the product photo (${e}). Try picking another image.` }));
     latencies.current = [];
     setLatency(null);
     return () => {
       cancelled = true;
     };
-  }, [connected, product, prompt]);
+  }, [connected, product, prompt, size]);
 
   function snapshot() {
     outRef.current?.toBlob((blob) => {
@@ -204,8 +221,8 @@ export default function App() {
       <div className="relative mx-2 flex-1 overflow-hidden rounded-2xl bg-black">
         <canvas
           ref={outRef}
-          width={FRAME_WIDTH}
-          height={FRAME_HEIGHT}
+          width={size.width}
+          height={size.height}
           aria-label="You, wearing the product"
           className={`h-full w-full object-contain ${hasOutput ? "" : "invisible"}`}
         />

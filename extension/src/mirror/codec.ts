@@ -1,18 +1,25 @@
 // H.264 over the websocket, configured like JoyAI's own client (static/index.html). JPEG frames at 24 FPS
 // were ~8-10 Mbit/s each way, which saturates a home uplink and turns into seconds of queueing.
 
-import { FRAME_HEIGHT, FRAME_WIDTH } from "./media";
+import type { FrameSize } from "./media";
 
 const KEYFRAME_INTERVAL = 8;
-// JoyAI's "high" uplink tier: 0.6 * 4 Mbit/s at 1248x720 16 FPS, scaled to our 480x840 frame at 24 FPS (~1.3 Mbit/s).
-const UPLINK_BITRATE = Math.round(0.6 * 4_000_000 * ((FRAME_WIDTH * FRAME_HEIGHT) / (1248 * 720)) * Math.sqrt(24 / 16));
+
+// JoyAI's "high" uplink tier: 0.6 * 4 Mbit/s at 1248x720 16 FPS, scaled by pixels and sqrt(fps) (~1.3 Mbit/s for 840x480 at 24).
+function uplinkBitrate(size: FrameSize, fps: number) {
+  return Math.round(0.6 * 4_000_000 * ((size.width * size.height) / (1248 * 720)) * Math.sqrt(fps / 16));
+}
 
 export class UplinkEncoder {
   private encoder: VideoEncoder;
   private seq = 0;
   private captureTimes = new Map<number, number>();
 
-  constructor(fps: number, onChunk: (data: ArrayBuffer, tCaptureMs: number) => void) {
+  constructor(
+    readonly size: FrameSize,
+    fps: number,
+    onChunk: (data: ArrayBuffer, tCaptureMs: number) => void,
+  ) {
     this.encoder = new VideoEncoder({
       output: (chunk) => {
         const t = this.captureTimes.get(chunk.timestamp);
@@ -26,9 +33,9 @@ export class UplinkEncoder {
     });
     this.encoder.configure({
       codec: "avc1.42E028",
-      width: FRAME_WIDTH,
-      height: FRAME_HEIGHT,
-      bitrate: UPLINK_BITRATE,
+      width: size.width,
+      height: size.height,
+      bitrate: uplinkBitrate(size, fps),
       framerate: fps,
       latencyMode: "realtime",
       avc: { format: "annexb" },
