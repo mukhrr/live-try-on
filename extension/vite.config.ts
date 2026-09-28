@@ -23,12 +23,15 @@ export default defineConfig({
     rollupOptions: {
       input: {
         mirror: "mirror.html",
+        float: "float.html",
+        offscreen: "offscreen.html",
+        permission: "permission.html",
         background: "src/background.ts",
         content: "src/content.ts",
       },
       output: {
         // The manifest references these by fixed name.
-        entryFileNames: (chunk) => (chunk.name === "mirror" ? "assets/[name]-[hash].js" : "[name].js"),
+        entryFileNames: (chunk) => (chunk.name === "background" || chunk.name === "content" ? "[name].js" : "assets/[name]-[hash].js"),
       },
     },
   },

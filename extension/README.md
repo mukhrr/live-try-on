@@ -1,6 +1,12 @@
 # Toshoyna Chrome extension
 
-Click the toolbar icon on a shop page, click a product photo, and a mirror window shows your webcam with you wearing it. The mirror streams to the JoyAI server (see the root README) with the product photo as the reference image.
+Click the toolbar icon on a shop page, click a product photo, and a floating mirror appears in the corner of the page showing you wearing it. Its expand button opens a full-screen mirror of the same stream.
+
+How it's split:
+- `src/engine/` runs in an offscreen document: camera, the JoyAI websocket (see the root README) and the H.264 encoder. The product photo is JoyAI's reference image.
+- `src/viewer/` is the mirror UI, used by both `float.html` (an iframe on the shop page) and `mirror.html` (the full-screen window). Each viewer decodes the engine's stream itself, so expanding doesn't restart the session. They talk over a BroadcastChannel (`src/bus.ts`).
+- The float never touches the camera, so shops can't block it and Chrome doesn't ask per site. The first time, `permission.html` asks for camera access once for the extension.
+- The engine closes itself 15s after the last viewer goes away.
 
 ```bash
 pnpm install
@@ -19,6 +25,6 @@ The server URL defaults to the `modal serve` dev URL. Change it with **Server** 
 ../server/.venv/bin/python dev/mock_joyai.py     # http://127.0.0.1:8765
 ```
 
-Then set the mirror's server to `http://127.0.0.1:8765`.
+Then set the server to `http://127.0.0.1:8765` under ⚙ in the full-screen mirror.
 
 The badge in the top right is capture-to-display latency: the server echoes each frame's capture time back with the edited frame.

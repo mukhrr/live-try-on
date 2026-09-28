@@ -1,6 +1,8 @@
 // Injected on demand by the toolbar button. Kept import-free: executeScript runs it as a classic script.
 
-type PickWindow = Window & { __toshoynaStopPick?: () => void };
+type PickWindow = Window & { __toshoynaStopPick?: () => void; __toshoynaFloatListener?: boolean };
+
+const FLOAT_ID = "toshoyna-float";
 
 const MIN_SIZE = 80;
 const IMAGE_URL = /\.(jpe?g|png|webp|avif)(\?|#|$)/i;
@@ -48,6 +50,27 @@ function pickableImage(target: EventTarget | null): HTMLImageElement | null {
   if (!img) return null;
   const r = img.getBoundingClientRect();
   return r.width >= MIN_SIZE && r.height >= MIN_SIZE && (img.currentSrc || img.src) ? img : null;
+}
+
+/** The floating mirror: an extension page in an iframe. It only displays; the camera runs in the extension. */
+function showFloat() {
+  const w = window as PickWindow;
+  if (document.getElementById(FLOAT_ID)) return;
+  const frame = document.createElement("iframe");
+  frame.id = FLOAT_ID;
+  frame.src = chrome.runtime.getURL("float.html");
+  frame.title = "Toshoyna mirror";
+  frame.style.cssText =
+    "position:fixed;right:16px;bottom:16px;width:480px;height:274px;max-width:calc(100vw - 32px);z-index:2147483647;" +
+    "border:0;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.35);background:#09090b;color-scheme:normal";
+  document.documentElement.append(frame);
+
+  if (w.__toshoynaFloatListener) return;
+  w.__toshoynaFloatListener = true;
+  const extensionOrigin = new URL(chrome.runtime.getURL("")).origin;
+  window.addEventListener("message", (e) => {
+    if (e.origin === extensionOrigin && e.data?.toshoyna === "close") document.getElementById(FLOAT_ID)?.remove();
+  });
 }
 
 function startPick() {
@@ -100,6 +123,7 @@ function startPick() {
       },
     });
     stop();
+    showFloat();
   };
 
   const onKey = (e: KeyboardEvent) => {
